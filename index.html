@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nexus Controller - אפליקציית השלט לנייד</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase Cloud Firestore SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Rubik:wght@400;600;800&display=swap');
+
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'Rubik', sans-serif;
+            background-color: #030712;
+            color: #f3f4f6;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .glass-btn {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
+            transition: transform 0.05s ease, background-color 0.1s ease;
+        }
+
+        .glass-btn:active {
+            background: rgba(6, 182, 212, 0.85) !important;
+            transform: scale(0.92);
+            border-color: #06b6d4;
+            box-shadow: 0 0 25px rgba(6, 182, 212, 0.7);
+        }
+
+        .joystick-base {
+            background: radial-gradient(circle, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.95) 100%);
+            border: 2px solid rgba(6, 182, 212, 0.4);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.2);
+        }
+
+        .joystick-knob {
+            background: radial-gradient(circle, #06b6d4 0%, #0284c7 100%);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.8);
+        }
+
+        .touchpad-area {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            box-shadow: inset 0 0 15px rgba(99, 102, 241, 0.15);
+        }
+
+        /* 🌀 ANIMATION: WAVING BUBBLES TO GAMEPAD MORPH LOADER */
+        @keyframes orbitSpin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes bubblePulseWave {
+            0%, 100% {
+                transform: scale(0.8) translateY(0px);
+                opacity: 0.4;
+            }
+            50% {
+                transform: scale(1.3) translateY(-10px);
+                opacity: 1;
+                box-shadow: 0 0 20px rgba(6, 182, 212, 0.9);
+            }
+        }
+
+        @keyframes mergeToSingleOrb {
+            0% {
+                width: 130px;
+                height: 130px;
+                border-radius: 50%;
+            }
+            50% {
+                width: 70px;
+                height: 70px;
+                border-radius: 50%;
+                background: rgba(6, 182, 212, 1);
+                box-shadow: 0 0 40px rgba(6, 182, 212, 1);
+            }
+            100% {
+                width: 140px;
+                height: 100px;
+                border-radius: 28px;
+                background: linear-gradient(135deg, #06b6d4, #3b82f6);
+                box-shadow: 0 0 50px rgba(59, 130, 246, 0.8);
+            }
+        }
+
+        .loader-orbit-ring {
+            animation: orbitSpin 2.2s linear infinite;
+        }
+
+        .loader-bubble {
+            animation: bubblePulseWave 1.4s ease-in-out infinite alternate;
+        }
+
+        .morph-gamepad-container {
+            transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+    </style>
+</head>
+<body class="flex flex-col justify-between p-3 relative bg-slate-950 text-slate-100">
+
+    <!-- 🌀 FULLSCREEN BUFFERING LOADER OVERLAY (WAVY BUBBLES MORPHING TO GAMEPAD) -->
+    <div id="loader-screen" class="fixed inset-0 z-[100] w-screen h-screen bg-slate-950/98 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center transition-all duration-500 opacity-0 pointer-events-none">
+        
+        <!-- DYNAMIC BUBBLE & GAMEPAD ANIMATION BOX -->
+        <div id="loader-anim-box" class="relative w-44 h-44 flex items-center justify-center mb-8">
+            
+            <!-- STEP 1: ORBITING WAVING BUBBLES RING -->
+            <div id="bubbles-ring" class="loader-orbit-ring absolute inset-0 flex items-center justify-center">
+                <div class="loader-bubble absolute top-0 w-6 h-6 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/80" style="animation-delay: 0s;"></div>
+                <div class="loader-bubble absolute right-0 w-7 h-7 rounded-full bg-blue-500 shadow-lg shadow-blue-500/80" style="animation-delay: 0.3s;"></div>
+                <div class="loader-bubble absolute bottom-0 w-6 h-6 rounded-full bg-indigo-500 shadow-lg shadow-indigo-500/80" style="animation-delay: 0.6s;"></div>
+                <div class="loader-bubble absolute left-0 w-8 h-8 rounded-full bg-purple-500 shadow-lg shadow-purple-500/80" style="animation-delay: 0.9s;"></div>
+            </div>
+
+            <!-- STEP 2: CENTER MERGING BUBBLE / GAMEPAD ICON -->
+            <div id="central-morph-orb" class="morph-gamepad-container w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-2xl shadow-cyan-500/50 z-10 scale-90">
+                <i id="loader-gamepad-icon" class="fa-solid fa-gamepad text-3xl text-slate-950 transition-all duration-500 opacity-0 scale-50"></i>
+            </div>
+        </div>
+
+        <!-- LOADING STATUS TEXT -->
+        <h3 id="loader-status-title" class="text-xl font-black text-white mb-2 tracking-wide">בודק קוד חדר...</h3>
+        <p id="loader-status-desc" class="text-xs text-slate-400 max-w-xs leading-relaxed">מבצע אימות נתונים מול הענן וחיפוש מכשיר מארח בסביבה</p>
+    </div>
+
+    <!-- TOAST ALERT NOTIFICATION BANNER -->
+    <div id="toast-banner" class="fixed top-5 left-1/2 -translate-x-1/2 z-[90] max-w-xs w-11/12 bg-red-950/90 border border-red-500/80 text-red-200 px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-3 transition-all duration-300 opacity-0 pointer-events-none -translate-y-10">
+        <div class="w-8 h-8 rounded-xl bg-red-500/20 flex items-center justify-center text-red-400 text-lg shrink-0">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div class="text-xs font-semibold text-right flex-1" id="toast-message">
+            קוד לא נכון או חדר האירוח לא קיים, נא לנסות שוב עם קוד אחר.
+        </div>
+    </div>
+
+    <!-- PAIRING MODAL -->
+    <div id="pairing-modal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex flex-col justify-center items-center p-6 text-center">
+        <div class="w-20 h-20 rounded-3xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-slate-950 text-4xl mb-6 shadow-2xl shadow-cyan-500/40">
+            <i class="fa-solid fa-gamepad"></i>
+        </div>
+        
+        <h1 class="text-2xl font-extrabold text-white mb-2">Nexus Mobile Controller</h1>
+        <p class="text-xs text-slate-400 max-w-xs mb-6">תמיכה ברמקול DualSense, משטח מגע, רטט מתקדם וסנכרון שלטים</p>
+
+        <div class="w-full max-w-xs space-y-3">
+            <label class="block text-right text-xs font-bold text-cyan-400">הזן קוד PIN מהמחשב המארח:</label>
+            <input type="text" id="input-pin" value="" placeholder="NEXUS-XXXX" class="w-full bg-slate-900 border border-cyan-500/50 rounded-2xl px-4 py-3.5 text-center text-lg font-mono font-bold text-white tracking-widest uppercase focus:outline-none focus:border-cyan-400">
+            
+            <button onclick="connectHybridController()" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black py-3.5 rounded-2xl shadow-lg shadow-cyan-500/30 text-sm transition active:scale-95">
+                <i class="fa-solid fa-plug ml-2"></i> התחבר בשלט אלחוטי
+            </button>
+        </div>
+    </div>
+
+    <!-- HEADER -->
+    <header class="flex justify-between items-center z-10">
+        <div class="flex items-center gap-3">
+            <span id="conn-indicator" class="w-3 h-3 rounded-full bg-amber-400 animate-pulse"></span>
+            <div>
+                <h2 id="skin-title-display" class="font-bold text-xs text-white">PlayStation DualSense</h2>
+                <span id="ping-badge" class="text-[10px] text-emerald-400 font-mono">DualSense Audio & Haptics Active</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button onclick="toggleSound()" id="sound-btn" class="glass-btn px-2.5 py-1.5 rounded-xl text-xs text-amber-400">
+                <i class="fa-solid fa-volume-high"></i>
+            </button>
+            <button onclick="cycleSkinsLocally()" class="glass-btn px-3 py-1.5 rounded-xl text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                <i class="fa-solid fa-sliders"></i>
+                <span>החלף שלט</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- TOUCHPAD AREA FOR CAMERA SWIPE -->
+    <div id="touchpad" class="touchpad-area my-2 h-16 rounded-2xl flex items-center justify-center text-slate-500 text-xs font-bold tracking-widest uppercase border border-indigo-500/20 active:border-indigo-400/60">
+        <i class="fa-solid fa-hand-pointer ml-2 text-indigo-400"></i>
+        <span>משטח מגע / הזזת מצלמה (Touchpad Camera)</span>
+    </div>
+
+    <!-- MAIN GAMEPAD CONTAINER -->
+    <main id="gamepad-container" class="flex-1 grid grid-cols-2 gap-2 items-center my-auto">
+        <!-- Dynamic HUD elements rendered via JS -->
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="flex justify-center items-center gap-6 z-10 pb-1">
+        <button ontouchstart="sendInput('SHARE', true)" class="glass-btn px-3 py-1.5 rounded-full text-[10px] font-bold text-slate-400">SHARE</button>
+        <button ontouchstart="sendInput('PS_HOME', true)" class="w-10 h-10 rounded-full bg-blue-600/30 border border-blue-400/50 flex items-center justify-center text-blue-300 text-sm shadow-lg shadow-blue-500/20 active:scale-90">
+            <i class="fa-brands fa-playstation"></i>
+        </button>
+        <button ontouchstart="sendInput('OPTIONS', true)" class="glass-btn px-3 py-1.5 rounded-full text-[10px] font-bold text-slate-400">OPTIONS</button>
+    </footer>
+
+    <script>
+        let db = null;
+        let activePin = "";
+        let wsRelay = null;
+        let soundEnabled = true;
+        let audioCtx = null;
+        let currentSkin = "PlayStation DualSense";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDo6ci7yWcvXI_8oQyDl_fjBC7vy1CT5Wc",
+            authDomain: "nexsus-ec154.firebaseapp.com",
+            projectId: "nexsus-ec154",
+            storageBucket: "nexsus-ec154.firebasestorage.app",
+            messagingSenderId: "599783520435",
+            appId: "1:599783520435:web:151ada6ccd1a2e595018c6",
+            measurementId: "G-H5BPEZ9K8N"
+        };
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast-banner');
+            const msgElem = document.getElementById('toast-message');
+            if (!toast || !msgElem) return;
+
+            msgElem.innerText = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none', '-translate-y-10');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none', '-translate-y-10');
+                toast.classList.remove('opacity-100', 'translate-y-0');
+            }, 4000);
+        }
+
+        // 🌀 מציג ומריץ את אנימציית ה-BUFFERING
+        function startLoadingAnimation(statusTitle, statusDesc) {
+            const loader = document.getElementById('loader-screen');
+            const title = document.getElementById('loader-status-title');
+            const desc = document.getElementById('loader-status-desc');
+            const bubbles = document.getElementById('bubbles-ring');
+            const orb = document.getElementById('central-morph-orb');
+            const icon = document.getElementById('loader-gamepad-icon');
+
+            if (title) title.innerText = statusTitle;
+            if (desc) desc.innerText = statusDesc;
+
+            // Reset animation state
+            if (bubbles) bubbles.style.opacity = '1';
+            if (orb) {
+                orb.style.width = '80px';
+                orb.style.height = '80px';
+                orb.style.borderRadius = '50%';
+            }
+            if (icon) {
+                icon.style.opacity = '0';
+                icon.style.transform = 'scale(0.5)';
+            }
+
+            if (loader) {
+                loader.classList.remove('opacity-0', 'pointer-events-none');
+                loader.classList.add('opacity-100');
+            }
+        }
+
+        function playMorphToGamepadAnimation(callback) {
+            const bubbles = document.getElementById('bubbles-ring');
+            const orb = document.getElementById('central-morph-orb');
+            const icon = document.getElementById('loader-gamepad-icon');
+            const title = document.getElementById('loader-status-title');
+
+            if (title) title.innerText = 'חדר אומת! מעביר לממשק השלט...';
+
+            // Phase 1: Bubbles collapse into 1 single orb
+            if (bubbles) bubbles.style.opacity = '0';
+            if (orb) {
+                orb.style.width = '140px';
+                orb.style.height = '90px';
+                orb.style.borderRadius = '24px';
+            }
+
+            // Phase 2: Gamepad icon appears inside orb
+            setTimeout(() => {
+                if (icon) {
+                    icon.style.opacity = '1';
+                    icon.style.transform = 'scale(1.2)';
+                }
+            }, 250);
+
+            // Phase 3: Fade out loader and open controller
+            setTimeout(() => {
+                const loader = document.getElementById('loader-screen');
+                if (loader) {
+                    loader.classList.add('opacity-0', 'pointer-events-none');
+                    loader.classList.remove('opacity-100');
+                }
+                if (callback) callback();
+            }, 1100);
+        }
+
+        function stopLoadingAnimation() {
+            const loader = document.getElementById('loader-screen');
+            if (loader) {
+                loader.classList.add('opacity-0', 'pointer-events-none');
+                loader.classList.remove('opacity-100');
+            }
+        }
+
+        function playDualSenseSound(type = 'click') {
+            if (!soundEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (type === 'click') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(750, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(350, audioCtx.currentTime + 0.04);
+                    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.04);
+                } else if (type === 'ps') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.06);
+                    gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.12);
+                }
+            } catch(e) {}
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('sound-btn');
+            btn.innerHTML = soundEnabled ? '<i class="fa-solid fa-volume-high"></i>' : '<i class="fa-solid fa-volume-xmark text-slate-500"></i>';
+        }
+
+        function triggerHaptic(pattern = [15]) {
+            if (navigator.vibrate) navigator.vibrate(pattern);
+        }
+
+        function initFirebaseMobile() {
+            try {
+                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+            } catch (err) {
+                console.error('[FIRESTORE_ERR]', err);
+            }
+        }
+
+        // 🔍 בדיקת תקינות קוד חדר ואימות חיבור
+        async function connectHybridController() {
+            const pin = document.getElementById('input-pin').value.trim().toUpperCase();
+            
+            if (!pin) {
+                showToast("אנא הזן קוד חדר תקין.");
+                return;
+            }
+
+            // הפעלת אנימציית טעינה (Buffering)
+            startLoadingAnimation("בודק קוד חדר...", "מבצע בדיקת תקינות מול הענן וחיפוש המחשב המארח");
+
+            if (!db) initFirebaseMobile();
+
+            try {
+                // Check if room exists in Firestore and is online
+                const roomDoc = await db.collection('nexus_rooms').doc(pin).get();
+
+                if (!roomDoc.exists || !roomDoc.data()?.host || roomDoc.data()?.host?.status !== 'online') {
+                    // ❌ קוד שגוי או לא קים
+                    setTimeout(() => {
+                        stopLoadingAnimation();
+                        showToast("קוד לא נכון או חדר האירוח לא קיים, נא לנסות שוב עם קוד אחר.");
+                    }, 800);
+                    return;
+                }
+
+                // V הקוד נכון וקיים!
+                activePin = pin;
+                const roomRef = db.collection('nexus_rooms').doc(pin);
+
+                await roomRef.set({
+                    controller: {
+                        status: 'online',
+                        deviceName: 'DualSense Wireless Controller',
+                        connectedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }
+                }, { merge: true });
+
+                roomRef.onSnapshot((snapshot) => {
+                    const data = snapshot.data();
+                    if (data && data.host && data.host.activePreset) {
+                        setGameSkin(data.host.activePreset);
+                    }
+                });
+
+                try {
+                    const hostIp = window.location.hostname || 'localhost';
+                    wsRelay = new WebSocket(`ws://${hostIp}:8888`);
+                    wsRelay.onopen = () => {
+                        wsRelay.send(JSON.stringify({ type: 'REGISTER_CONTROLLER', pin: pin, deviceName: 'Mobile Gamepad' }));
+                    };
+                } catch(e) {}
+
+                // הפעלת מעבר האנימציה לצורת שלט גיימינג
+                playMorphToGamepadAnimation(() => {
+                    document.getElementById('conn-indicator').className = 'w-3 h-3 rounded-full bg-emerald-400 animate-ping';
+                    document.getElementById('pairing-modal').classList.add('hidden');
+                });
+
+            } catch (err) {
+                stopLoadingAnimation();
+                showToast("שגיאה בהתחברות לשרת, אנא בדוק את חיבור האינטרנט ונסה שנית.");
+            }
+        }
+
+        function sendInput(key, val) {
+            triggerHaptic(key === 'PS_HOME' ? [30, 20, 30] : [15]);
+            playDualSenseSound(key === 'PS_HOME' ? 'ps' : 'click');
+
+            if (wsRelay && wsRelay.readyState === WebSocket.OPEN) {
+                wsRelay.send(JSON.stringify({ type: 'CONTROLLER_INPUT', input: key, value: val, timestamp: Date.now() }));
+            } else if (db && activePin) {
+                db.collection('nexus_rooms').doc(activePin).collection('inputs').add({ key: key, val: val, ts: Date.now() });
+            }
+        }
+
+        function cycleSkinsLocally() {
+            const skins = ['PlayStation DualSense', 'Xbox Wireless', 'Nintendo Switch Pro', 'COD Mobile', 'EA FC Mobile'];
+            const nextIdx = (skins.indexOf(currentSkin) + 1) % skins.length;
+            setGameSkin(skins[nextIdx]);
+        }
+
+        function setGameSkin(skinName) {
+            currentSkin = skinName;
+            document.getElementById('skin-title-display').innerText = skinName;
+            const container = document.getElementById('gamepad-container');
+            if (!container) return;
+
+            if (skinName === 'PlayStation DualSense') {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center gap-2">
+                        <div id="joystick-area" class="joystick-base w-32 h-32 rounded-full relative flex items-center justify-center touch-none">
+                            <div id="joystick-stick" class="joystick-knob w-12 h-12 rounded-full absolute"></div>
+                        </div>
+                        <div class="relative w-24 h-24 flex items-center justify-center">
+                            <button ontouchstart="sendInput('DPAD_UP', true)" class="glass-btn absolute top-0 w-8 h-8 rounded-lg text-xs font-bold text-slate-200">▲</button>
+                            <button ontouchstart="sendInput('DPAD_LEFT', true)" class="glass-btn absolute left-0 w-8 h-8 rounded-lg text-xs font-bold text-slate-200">◀</button>
+                            <button ontouchstart="sendInput('DPAD_RIGHT', true)" class="glass-btn absolute right-0 w-8 h-8 rounded-lg text-xs font-bold text-slate-200">▶</button>
+                            <button ontouchstart="sendInput('DPAD_DOWN', true)" class="glass-btn absolute bottom-0 w-8 h-8 rounded-lg text-xs font-bold text-slate-200">▼</button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-center">
+                        <div class="relative w-40 h-40 flex items-center justify-center">
+                            <button ontouchstart="sendInput('TRIANGLE', true)" class="glass-btn absolute top-0 w-12 h-12 rounded-full font-black text-emerald-400 text-xl border-emerald-400/50 flex items-center justify-center">▲</button>
+                            <button ontouchstart="sendInput('SQUARE', true)" class="glass-btn absolute left-0 w-12 h-12 rounded-full font-black text-pink-400 text-xl border-pink-400/50 flex items-center justify-center">■</button>
+                            <button ontouchstart="sendInput('CIRCLE', true)" class="glass-btn absolute right-0 w-12 h-12 rounded-full font-black text-red-400 text-xl border-red-400/50 flex items-center justify-center">●</button>
+                            <button ontouchstart="sendInput('CROSS', true)" class="glass-btn absolute bottom-0 w-12 h-12 rounded-full font-black text-blue-400 text-xl border-blue-400/50 flex items-center justify-center">✖</button>
+                        </div>
+                    </div>
+                `;
+            } else if (skinName === 'Nintendo Switch Pro') {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center gap-2">
+                        <div id="joystick-area" class="joystick-base w-32 h-32 rounded-full relative flex items-center justify-center touch-none">
+                            <div id="joystick-stick" class="joystick-knob w-12 h-12 rounded-full absolute"></div>
+                        </div>
+                        <div class="relative w-24 h-24 flex items-center justify-center">
+                            <button ontouchstart="sendInput('DPAD_UP', true)" class="glass-btn absolute top-0 w-8 h-8 rounded-lg text-xs font-bold text-red-300">▲</button>
+                            <button ontouchstart="sendInput('DPAD_LEFT', true)" class="glass-btn absolute left-0 w-8 h-8 rounded-lg text-xs font-bold text-red-300">◀</button>
+                            <button ontouchstart="sendInput('DPAD_RIGHT', true)" class="glass-btn absolute right-0 w-8 h-8 rounded-lg text-xs font-bold text-red-300">▶</button>
+                            <button ontouchstart="sendInput('DPAD_DOWN', true)" class="glass-btn absolute bottom-0 w-8 h-8 rounded-lg text-xs font-bold text-red-300">▼</button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-center">
+                        <div class="relative w-40 h-40 flex items-center justify-center">
+                            <button ontouchstart="sendInput('X', true)" class="glass-btn absolute top-0 w-12 h-12 rounded-full font-black text-red-400 text-lg flex items-center justify-center">X</button>
+                            <button ontouchstart="sendInput('Y', true)" class="glass-btn absolute left-0 w-12 h-12 rounded-full font-black text-yellow-400 text-lg flex items-center justify-center">Y</button>
+                            <button ontouchstart="sendInput('A', true)" class="glass-btn absolute right-0 w-12 h-12 rounded-full font-black text-red-500 text-lg flex items-center justify-center">A</button>
+                            <button ontouchstart="sendInput('B', true)" class="glass-btn absolute bottom-0 w-12 h-12 rounded-full font-black text-yellow-500 text-lg flex items-center justify-center">B</button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center gap-2">
+                        <div id="joystick-area" class="joystick-base w-32 h-32 rounded-full relative flex items-center justify-center touch-none">
+                            <div id="joystick-stick" class="joystick-knob w-12 h-12 rounded-full absolute"></div>
+                        </div>
+                        <div class="relative w-24 h-24 flex items-center justify-center">
+                            <button ontouchstart="sendInput('DPAD_UP', true)" class="glass-btn absolute top-0 w-8 h-8 rounded-lg text-xs font-bold text-slate-300">▲</button>
+                            <button ontouchstart="sendInput('DPAD_LEFT', true)" class="glass-btn absolute left-0 w-8 h-8 rounded-lg text-xs font-bold text-slate-300">◀</button>
+                            <button ontouchstart="sendInput('DPAD_RIGHT', true)" class="glass-btn absolute right-0 w-8 h-8 rounded-lg text-xs font-bold text-slate-300">▶</button>
+                            <button ontouchstart="sendInput('DPAD_DOWN', true)" class="glass-btn absolute bottom-0 w-8 h-8 rounded-lg text-xs font-bold text-slate-300">▼</button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-center">
+                        <div class="relative w-40 h-40 flex items-center justify-center">
+                            <button ontouchstart="sendInput('Y', true)" class="glass-btn absolute top-0 w-12 h-12 rounded-full font-black text-amber-400 text-lg flex items-center justify-center">Y</button>
+                            <button ontouchstart="sendInput('X', true)" class="glass-btn absolute left-0 w-12 h-12 rounded-full font-black text-blue-400 text-lg flex items-center justify-center">X</button>
+                            <button ontouchstart="sendInput('B', true)" class="glass-btn absolute right-0 w-12 h-12 rounded-full font-black text-red-400 text-lg flex items-center justify-center">B</button>
+                            <button ontouchstart="sendInput('A', true)" class="glass-btn absolute bottom-0 w-12 h-12 rounded-full font-black text-emerald-400 text-lg flex items-center justify-center">A</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            initJoystickEvents();
+            initTouchpadEvents();
+        }
+
+        function initJoystickEvents() {
+            const base = document.getElementById('joystick-area');
+            const stick = document.getElementById('joystick-stick');
+            if (!base || !stick) return;
+
+            let isDragging = false;
+            const maxRadius = 40;
+
+            const handleMove = (e) => {
+                if (!isDragging) return;
+                const touch = e.touches ? e.touches[0] : e;
+                const rect = base.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+
+                let deltaX = touch.clientX - centerX;
+                let deltaY = touch.clientY - centerY;
+                const distance = Math.hypot(deltaX, deltaY);
+
+                if (distance > maxRadius) {
+                    deltaX = (deltaX / distance) * maxRadius;
+                    deltaY = (deltaY / distance) * maxRadius;
+                }
+
+                stick.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                sendInput('JOYSTICK_MOVE', { x: (deltaX / maxRadius).toFixed(2), y: (deltaY / maxRadius).toFixed(2) });
+            };
+
+            base.addEventListener('touchstart', (e) => { isDragging = true; handleMove(e); });
+            window.addEventListener('touchmove', handleMove);
+            window.addEventListener('touchend', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    stick.style.transform = 'translate(0px, 0px)';
+                    sendInput('JOYSTICK_MOVE', { x: 0, y: 0 });
+                }
+            });
+        }
+
+        function initTouchpadEvents() {
+            const pad = document.getElementById('touchpad');
+            if (!pad) return;
+
+            let lastX = 0, lastY = 0;
+
+            pad.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                lastX = touch.clientX;
+                lastY = touch.clientY;
+                triggerHaptic([10]);
+            });
+
+            pad.addEventListener('touchmove', (e) => {
+                const touch = e.touches[0];
+                const deltaX = touch.clientX - lastX;
+                const deltaY = touch.clientY - lastY;
+                lastX = touch.clientX;
+                lastY = touch.clientY;
+
+                sendInput('CAMERA_SWIPE', { dx: deltaX, dy: deltaY });
+            });
+        }
+
+        window.onload = function() {
+            initFirebaseMobile();
+            setGameSkin('PlayStation DualSense');
+        };
+    </script>
+</body>
+</html>
