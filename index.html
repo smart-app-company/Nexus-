@@ -109,8 +109,8 @@
                         <h2 class="text-2xl font-bold text-white mt-0.5">צימוד חומרה וריבוי שלטים ניידים</h2>
                     </div>
                     <div class="flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded-full border border-slate-800 text-xs text-slate-300">
-                        <i class="fa-solid fa-clock text-amber-400"></i>
-                        <span>רענון קוד בעוד: <strong id="pin-timer" class="text-amber-400 font-mono">05:00</strong></span>
+                        <i id="timer-icon" class="fa-solid fa-clock text-amber-400"></i>
+                        <span>סטטוס קוד: <strong id="pin-timer" class="text-amber-400 font-mono">05:00</strong></span>
                     </div>
                 </div>
 
@@ -224,6 +224,7 @@
         let roomUnsubscribe = null;
         let wsSocket = null;
         let ipcRenderer = null;
+        let pinTimeRemaining = 300;
 
         const activeControllersMap = new Map();
 
@@ -423,6 +424,8 @@
             if (badgeElem) badgeElem.innerText = `${count} מחוברים`;
 
             if (count === 0) {
+                // Reset PIN refresh timer when all controllers disconnect
+                pinTimeRemaining = 300;
                 if (statusElem) {
                     statusElem.innerText = "0 שלטים מחוברים - ממתין לצימוד...";
                     statusElem.className = "text-base font-bold text-amber-400";
@@ -521,14 +524,35 @@
         }
 
         function startPinTimer() {
-            let pinTimeRemaining = 300;
             setInterval(() => {
+                const timerElem = document.getElementById('pin-timer');
+                const timerIcon = document.getElementById('timer-icon');
+
+                // If at least 1 controller is connected, lock the room PIN code
+                if (activeControllersMap.size > 0) {
+                    if (timerElem) {
+                        timerElem.className = 'text-emerald-400 font-bold font-mono';
+                        timerElem.innerHTML = `<i class="fa-solid fa-lock text-[11px] ml-1"></i> נעול (שלט מחובר)`;
+                    }
+                    if (timerIcon) {
+                        timerIcon.className = 'fa-solid fa-shield-halved text-emerald-400';
+                    }
+                    return; // Pause countdown timer while session is active
+                }
+
+                // If no controllers are connected, countdown normally
+                if (timerIcon) {
+                    timerIcon.className = 'fa-solid fa-clock text-amber-400';
+                }
+
                 pinTimeRemaining--;
                 const minutes = String(Math.floor(pinTimeRemaining / 60)).padStart(2, '0');
                 const seconds = String(pinTimeRemaining % 60).padStart(2, '0');
                 
-                const timerElem = document.getElementById('pin-timer');
-                if (timerElem) timerElem.innerText = `${minutes}:${seconds}`;
+                if (timerElem) {
+                    timerElem.className = 'text-amber-400 font-mono';
+                    timerElem.innerText = `${minutes}:${seconds}`;
+                }
 
                 if (pinTimeRemaining <= 0) {
                     regeneratePin();
